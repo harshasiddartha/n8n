@@ -1,5 +1,5 @@
 import { GlobalConfig } from '@n8n/config';
-import { assertClearedFor, workflowContentSubject } from '@n8n/decorators';
+import { assertClearedFor, workflowContentSubject, workflowSubject } from '@n8n/decorators';
 import { Service } from '@n8n/di';
 import type { Scope } from '@n8n/permissions';
 import { DataSource, In, Like, Not, IsNull } from '@n8n/typeorm';
