@@ -127,10 +127,6 @@ beforeEach(async () => {
 	Object.defineProperty(instanceSettings, 'isLeader', { value: true, configurable: true });
 });
 
-afterEach(() => {
-	service.stopRefresh();
-});
-
 afterAll(async () => {
 	await testDb.terminate();
 });
@@ -207,24 +203,16 @@ describe('TrustedKeyService (integration)', () => {
 			expect(sourceIds).not.toContain('old-source');
 		});
 
-		it('should sync on follower without starting the refresh poller', async () => {
+		it('should sync on follower', async () => {
 			Object.defineProperty(instanceSettings, 'isLeader', { value: false, configurable: true });
 			config.trustedKeys = JSON.stringify([staticKeyEntry()]);
 
-			const setIntervalSpy = vi.spyOn(global, 'setInterval');
+			await service.initialize();
 
-			try {
-				await service.initialize();
-
-				const sources = await sourceRepo.find();
-				expect(sources).toHaveLength(1);
-				expect(sources[0].status).toBe('healthy');
-				expect(await keyRepo.find()).toHaveLength(1);
-
-				expect(setIntervalSpy).not.toHaveBeenCalled();
-			} finally {
-				setIntervalSpy.mockRestore();
-			}
+			const sources = await sourceRepo.find();
+			expect(sources).toHaveLength(1);
+			expect(sources[0].status).toBe('healthy');
+			expect(await keyRepo.find()).toHaveLength(1);
 		});
 
 		it('should remove all sources and keys when config becomes empty', async () => {
@@ -243,29 +231,21 @@ describe('TrustedKeyService (integration)', () => {
 	});
 
 	describe('onLeaderTakeover', () => {
-		it('should refresh keys and start the poller on leader takeover', async () => {
+		it('should refresh keys on leader takeover', async () => {
 			Object.defineProperty(instanceSettings, 'isLeader', { value: false, configurable: true });
 			config.trustedKeys = JSON.stringify([staticKeyEntry({ kid: 'takeover-key' })]);
 			await service.initialize();
 
-			const setIntervalSpy = vi.spyOn(global, 'setInterval');
+			Object.defineProperty(instanceSettings, 'isLeader', { value: true, configurable: true });
+			await service.onLeaderTakeover();
 
-			try {
-				Object.defineProperty(instanceSettings, 'isLeader', { value: true, configurable: true });
-				await service.onLeaderTakeover();
+			const sources = await sourceRepo.find();
+			expect(sources).toHaveLength(1);
+			expect(sources[0].status).toBe('healthy');
 
-				const sources = await sourceRepo.find();
-				expect(sources).toHaveLength(1);
-				expect(sources[0].status).toBe('healthy');
-
-				const keys = await keyRepo.find();
-				expect(keys).toHaveLength(1);
-				expect(keys[0].kid).toBe('takeover-key');
-
-				expect(setIntervalSpy).toHaveBeenCalledTimes(1);
-			} finally {
-				setIntervalSpy.mockRestore();
-			}
+			const keys = await keyRepo.find();
+			expect(keys).toHaveLength(1);
+			expect(keys[0].kid).toBe('takeover-key');
 		});
 	});
 
