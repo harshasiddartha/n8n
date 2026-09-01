@@ -220,7 +220,6 @@ export default defineConfig(
 		files: [
 			'./src/services/import.service.ts',
 			'./src/modules/source-control.ee/source-control-import.service.ee.ts',
-			'./src/modules/instance-ai/instance-ai.adapter.service.ts',
 		],
 		rules: { 'n8n-local-rules/no-unsealed-workflow-entity-write': 'off' },
 	},
