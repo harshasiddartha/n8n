@@ -110,7 +110,7 @@ describe('Microsoft Teams V2 — onlineMeeting:get lookup handling', () => {
 		expect(transport.microsoftApiRequest).not.toHaveBeenCalled();
 	});
 
-	it.each(['get'])(
+	it.each(['get', 'deleteMeeting'])(
 		'onlineMeeting:%s rejects a separator-bearing meetingId before any request',
 		async (op) => {
 			setParams({
@@ -127,7 +127,10 @@ describe('Microsoft Teams V2 — onlineMeeting:get lookup handling', () => {
 		},
 	);
 
-	it.each([['get', "The meeting you are trying to get doesn't exist"]])(
+	it.each([
+		['get', "The meeting you are trying to get doesn't exist"],
+		['deleteMeeting', "The meeting you are trying to delete doesn't exist"],
+	])(
 		'replaces a Graph 404 on %s by ID with the friendly not-found message',
 		async (op, message) => {
 			(transport.microsoftApiRequest as Mock).mockRejectedValue(
@@ -144,7 +147,7 @@ describe('Microsoft Teams V2 — onlineMeeting:get lookup handling', () => {
 		},
 	);
 
-	it.each(['get'])(
+	it.each(['get', 'deleteMeeting'])(
 		'rethrows a non-404 Graph error on %s unchanged (e.g. missing-scope 403)',
 		async (op) => {
 			(transport.microsoftApiRequest as Mock).mockRejectedValue(

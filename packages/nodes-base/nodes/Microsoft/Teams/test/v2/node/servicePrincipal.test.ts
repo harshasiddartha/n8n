@@ -75,6 +75,7 @@ describe('Microsoft Teams V2 — Service Principal runtime guards', () => {
 	it.each([
 		['create', { subject: 'Sync', startDateTime: '2026-09-01T10:00:00Z' }],
 		['get', { getBy: 'id', meetingId: 'meeting-id' }],
+		['deleteMeeting', { meetingId: 'meeting-id' }],
 	])(
 		'onlineMeeting:%s throws a static error and issues no request under SP',
 		async (op, params) => {
