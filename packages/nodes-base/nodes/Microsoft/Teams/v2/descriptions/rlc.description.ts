@@ -267,3 +267,64 @@ export const memberRLC: INodeProperties = {
 		},
 	],
 };
+
+/**
+ * Org-wide user picker, backed by `getUsers`. Every mode hands the node a plain string that is
+ * resolved through `GET /users/{idOrUpn}`, so no mode declares an `extractValue`: an extract
+ * regex runs before node code and would reject an email address emitted by an AI agent that
+ * cannot know which mode is selected. Spread-and-override for other user fields
+ * (`{ ...userRLC, name: 'targetUserId' }`), but note `modes` is shared by reference.
+ */
+export const userRLC: INodeProperties = {
+	displayName: 'User',
+	name: 'userId',
+	type: 'resourceLocator',
+	default: { mode: 'list', value: '' },
+	required: true,
+	description: 'Select a user from your organization, by ID, or by email address',
+	modes: [
+		{
+			displayName: 'From List',
+			name: 'list',
+			type: 'list',
+			placeholder: 'e.g. Jane Smith',
+			typeOptions: {
+				searchListMethod: 'getUsers',
+				searchable: true,
+			},
+		},
+		{
+			displayName: 'By ID',
+			name: 'id',
+			type: 'string',
+			placeholder: 'e.g. 714c1202-cbac-40ff-9160-53ab5c4df9b8',
+			validation: [
+				{
+					type: 'regex',
+					properties: {
+						// Any Entra object id, not just v4 GUIDs: this regex hard-blocks
+						// literal values at editor level.
+						regex:
+							'^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})[ \t]*$',
+						errorMessage: 'Not a valid Microsoft Entra user ID',
+					},
+				},
+			],
+		},
+		{
+			displayName: 'By Email',
+			name: 'email',
+			type: 'string',
+			placeholder: 'e.g. jane.smith@example.com',
+			validation: [
+				{
+					type: 'regex',
+					properties: {
+						regex: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$',
+						errorMessage: 'Not a valid email address',
+					},
+				},
+			],
+		},
+	],
+};
