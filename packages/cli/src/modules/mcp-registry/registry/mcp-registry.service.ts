@@ -1,6 +1,5 @@
 import { Logger } from '@n8n/backend-common';
-import { Time } from '@n8n/constants';
-import { OnLeaderStepdown, OnLeaderTakeover, OnPubSubEvent, OnShutdown } from '@n8n/decorators';
+import { OnLeaderTakeover, OnPubSubEvent } from '@n8n/decorators';
 import { Service } from '@n8n/di';
 import { InstanceSettings } from 'n8n-core';
 import type { McpRegistryConnection } from 'n8n-workflow';
@@ -23,19 +22,11 @@ import type { McpRegistryServer } from './mcp-registry.types';
 import { toEntity, fromEntity } from './mcp-registry.types';
 import { MCP_REGISTRY_PACKAGE_NAME } from '../node-description-transform';
 
-type RefreshReason = 'startup' | 'leader-takeover' | 'interval';
-
-const REFRESH_INTERVAL_HOURS = 8;
-
-const REFRESH_INTERVAL_MS = REFRESH_INTERVAL_HOURS * Time.hours.toMilliseconds;
+export type McpRegistryRefreshReason = 'startup' | 'leader-takeover' | 'interval';
 
 @Service()
 export class McpRegistryService {
-	private refreshInterval: NodeJS.Timeout | undefined;
-
 	private refreshPromise: Promise<void> | undefined;
-
-	private isShuttingDown = false;
 
 	constructor(
 		private readonly logger: Logger,
@@ -57,26 +48,15 @@ export class McpRegistryService {
 		if (this.instanceSettings.isLeader && !inE2ETests) {
 			// don't want to wait for API calls to block on init
 			void this.refreshFromApi('startup');
-			this.startPeriodicRefresh();
 		}
 	}
 
+	// One-shot catch-up: the registry may have drifted while this instance was
+	// a follower and the refresh task was not running here.
 	@OnLeaderTakeover()
 	async onLeaderTakeover(): Promise<void> {
 		if (inE2ETests) return;
 		await this.refreshFromApi('leader-takeover');
-		this.startPeriodicRefresh();
-	}
-
-	@OnLeaderStepdown()
-	onLeaderStepdown(): void {
-		this.stopPeriodicRefresh();
-	}
-
-	@OnShutdown()
-	shutdown(): void {
-		this.isShuttingDown = true;
-		this.stopPeriodicRefresh();
 	}
 
 	@OnPubSubEvent('reload-mcp-registry')
@@ -134,26 +114,12 @@ export class McpRegistryService {
 		return loader.getConnection(nodeTypeName);
 	}
 
-	private startPeriodicRefresh(): void {
-		if (this.isShuttingDown || this.refreshInterval) {
-			return;
-		}
-
-		this.refreshInterval = setInterval(() => {
-			void this.refreshFromApi('interval');
-		}, REFRESH_INTERVAL_MS);
-
-		this.logger.debug('Scheduled MCP registry refresh', {
-			intervalHours: REFRESH_INTERVAL_HOURS,
-		});
-	}
-
-	private stopPeriodicRefresh(): void {
-		clearInterval(this.refreshInterval);
-		this.refreshInterval = undefined;
-	}
-
-	private async refreshFromApi(reason: RefreshReason): Promise<void> {
+	/**
+	 * Refreshes the registry from the remote API and reloads the generated node
+	 * types. Concurrent calls join the in-flight refresh. Never throws: a failed
+	 * refresh is logged.
+	 */
+	async refreshFromApi(reason: McpRegistryRefreshReason): Promise<void> {
 		if (this.refreshPromise) {
 			await this.refreshPromise;
 			return;
@@ -167,7 +133,7 @@ export class McpRegistryService {
 		}
 	}
 
-	private async refreshFromApiInternal(reason: RefreshReason): Promise<void> {
+	private async refreshFromApiInternal(reason: McpRegistryRefreshReason): Promise<void> {
 		try {
 			const existingServers = await this.getAll({ includeDeprecated: true });
 			let updatedServers: McpRegistryServer[];

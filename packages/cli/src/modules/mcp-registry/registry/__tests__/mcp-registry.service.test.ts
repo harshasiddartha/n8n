@@ -187,34 +187,24 @@ describe('McpRegistryService', () => {
 	});
 
 	describe('refresh flow', () => {
-		it('init does not start periodic refresh on followers', async () => {
-			vi.useFakeTimers();
-			const setIntervalSpy = vi.spyOn(global, 'setInterval');
+		it('init does not refresh from the API on followers', async () => {
 			const { service, apiClient } = createService({ isLeader: false });
 
 			await service.init();
 
-			expect(setIntervalSpy).not.toHaveBeenCalled();
 			expect(apiClient.fetchServersMetadata).not.toHaveBeenCalled();
 		});
 
-		it('init starts periodic refresh and kicks off startup refresh on leaders', async () => {
-			vi.useFakeTimers();
-			const setIntervalSpy = vi.spyOn(global, 'setInterval');
+		it('init kicks off a startup refresh on leaders', async () => {
 			const { service, apiClient } = createService({ isLeader: true });
 
 			await service.init();
 			await Promise.resolve();
 
-			expect(setIntervalSpy).toHaveBeenCalledTimes(1);
 			expect(apiClient.fetchServersMetadata).toHaveBeenCalledTimes(1);
-
-			service.shutdown();
 		});
 
 		it('onLeaderTakeover skips write + notifications when metadata is unchanged', async () => {
-			vi.useFakeTimers();
-			const setIntervalSpy = vi.spyOn(global, 'setInterval');
 			const metadata: McpRegistryServerMetadata[] = [
 				{
 					slug: notionMockServer.slug,
@@ -236,9 +226,6 @@ describe('McpRegistryService', () => {
 			expect(repository.upsert).not.toHaveBeenCalled();
 			expect(push.broadcast).not.toHaveBeenCalled();
 			expect(publisher.publishCommand).not.toHaveBeenCalled();
-			expect(setIntervalSpy).toHaveBeenCalledTimes(1);
-
-			service.shutdown();
 		});
 
 		it('onLeaderTakeover deprecates servers missing from metadata', async () => {
@@ -271,8 +258,6 @@ describe('McpRegistryService', () => {
 			expect(repository.upsert.mock.calls[0][1]).toEqual(['slug']);
 			expect(push.broadcast).toHaveBeenCalledWith({ type: 'nodeDescriptionUpdated', data: {} });
 			expect(publisher.publishCommand).toHaveBeenCalledWith({ command: 'reload-mcp-registry' });
-
-			service.shutdown();
 		});
 
 		it('onLeaderTakeover fetches only changed servers and publishes reload', async () => {
@@ -308,8 +293,6 @@ describe('McpRegistryService', () => {
 			expect(upsertEntities).toEqual([notionMockServer].map(toEntity));
 			expect(push.broadcast).toHaveBeenCalledWith({ type: 'nodeDescriptionUpdated', data: {} });
 			expect(publisher.publishCommand).toHaveBeenCalledWith({ command: 'reload-mcp-registry' });
-
-			service.shutdown();
 		});
 
 		it('onLeaderTakeover fetches all servers when no data is persisted', async () => {
@@ -320,8 +303,6 @@ describe('McpRegistryService', () => {
 			expect(apiClient.fetchAllServers).toHaveBeenCalledTimes(1);
 			expect(apiClient.fetchServersMetadata).not.toHaveBeenCalled();
 			expect(repository.upsert).toHaveBeenCalledTimes(1);
-
-			service.shutdown();
 		});
 	});
 
