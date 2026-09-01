@@ -7,8 +7,8 @@ import {
 
 import { updateDisplayOptions } from '@utils/utilities';
 
-import { channelRLC, teamRLC } from '../../descriptions';
-import { prepareMessage } from '../../helpers/utils';
+import { channelRLC, mentionsField, teamRLC } from '../../descriptions';
+import { prepareMessage, resolveMentions } from '../../helpers/utils';
 import {
 	buildTeamsPath,
 	getTeamsCredentialType,
@@ -49,6 +49,7 @@ const properties: INodeProperties[] = [
 			rows: 2,
 		},
 	},
+	mentionsField,
 	{
 		displayName: 'Options',
 		name: 'options',
@@ -123,12 +124,15 @@ export async function execute(
 		includeLinkToWorkflow = nodeVersion >= 1.1;
 	}
 
+	const mentions = await resolveMentions.call(this, i);
+
 	const body: IDataObject = prepareMessage.call(
 		this,
 		message,
 		contentType,
 		includeLinkToWorkflow as boolean,
 		instanceId,
+		mentions,
 	);
 
 	if (options.makeReply) {
