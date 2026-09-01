@@ -281,7 +281,8 @@ export const userRLC: INodeProperties = {
 	type: 'resourceLocator',
 	default: { mode: 'list', value: '' },
 	required: true,
-	description: 'Select a user from your organization, by ID, or by email address',
+	description:
+		'Select a user from your organization, by ID, or by principal name (the address they sign in with)',
 	modes: [
 		{
 			displayName: 'From List',
@@ -316,6 +317,9 @@ export const userRLC: INodeProperties = {
 			name: 'email',
 			type: 'string',
 			placeholder: 'e.g. jane.smith@example.com',
+			// Graph resolves `/users/{id|userPrincipalName}`, never a `mail` address, and the two
+			// differ in plenty of tenants.
+			hint: "The user's principal name (the address they sign in with), which is usually but not always their email address. Search From List instead to match on either.",
 			validation: [
 				{
 					type: 'regex',
