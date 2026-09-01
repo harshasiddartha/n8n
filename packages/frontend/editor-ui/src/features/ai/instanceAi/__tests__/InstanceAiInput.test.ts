@@ -6,6 +6,7 @@ import type { BaseTextKey } from '@n8n/i18n';
 import type { ITelemetryTrackProperties } from 'n8n-workflow';
 import { createComponentRenderer } from '@/__tests__/render';
 import InstanceAiInput from '../components/InstanceAiInput.vue';
+import type { ContextChip } from '../instanceAi.contextChip';
 import {
 	INSTANCE_AI_EMPTY_STATE_SUGGESTIONS as suggestions,
 	isPromptSuggestion,
@@ -29,7 +30,7 @@ type InputTestProps = {
 	suggestionCatalogVersion?: string;
 	suggestionTelemetryPayload?: ITelemetryTrackProperties;
 	placeholderKey?: BaseTextKey;
-	contextChip?: { label: string; testId?: string } | null;
+	contextChip?: ContextChip | null;
 };
 
 const defaultProps = (): InputTestProps => ({
@@ -271,6 +272,41 @@ describe('InstanceAiInput', () => {
 			'placeholder',
 			'Tell me what to build or ask a question – add context with +',
 		);
+	});
+
+	it('uses the new agent placeholder for a pending agent artifact', () => {
+		const { getByRole } = renderComponent({
+			props: {
+				contextChip: {
+					type: 'agent-artifact',
+					agentId: 'agent-1',
+					projectId: 'project-1',
+					isNewAgent: true,
+					label: 'New Agent',
+				},
+			},
+		});
+
+		expect(getByRole('textbox')).toHaveAttribute(
+			'placeholder',
+			'Describe the agent you want to build',
+		);
+	});
+
+	it('uses the default placeholder for a saved agent artifact', () => {
+		const { getByRole } = renderComponent({
+			props: {
+				contextChip: {
+					type: 'agent-artifact',
+					agentId: 'agent-1',
+					projectId: 'project-1',
+					isNewAgent: false,
+					label: 'Support Agent',
+				},
+			},
+		});
+
+		expect(getByRole('textbox')).toHaveAttribute('placeholder', 'Ask anything...');
 	});
 
 	it('disables the composer when the workflow builder is unavailable', () => {
@@ -793,6 +829,9 @@ describe('InstanceAiInput', () => {
 		const { emitted, getByRole, getByTestId } = renderComponent({
 			props: {
 				contextChip: {
+					type: 'agent-preview-session',
+					agentId: 'agent-1',
+					threadId: 'preview-thread-1',
 					label: 'SEO Auditor session',
 				},
 			},
@@ -816,6 +855,9 @@ describe('InstanceAiInput', () => {
 			props: {
 				isPlanEditMode: true,
 				contextChip: {
+					type: 'agent-preview-session',
+					agentId: 'agent-1',
+					threadId: 'preview-thread-1',
 					label: 'SEO Auditor session',
 				},
 			},
