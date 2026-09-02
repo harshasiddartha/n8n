@@ -219,7 +219,6 @@ export default defineConfig(
 		// NEVER add a new write here — it must fail CI. Remove each entry as its site migrates.
 		files: [
 			'./src/modules/instance-ai/instance-ai.adapter.service.ts',
-			'./src/modules/instance-ai/eval/thread-restore.service.ts',
 		],
 		rules: { 'n8n-local-rules/no-unsealed-workflow-entity-write': 'off' },
 	},
