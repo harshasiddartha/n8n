@@ -1,4 +1,5 @@
 import type { Logger } from '@n8n/backend-common';
+import type { AgentsConfig } from '@n8n/config';
 import { Container } from '@n8n/di';
 import type { Mock } from 'vitest';
 import { mock } from 'vitest-mock-extended';
@@ -19,6 +20,7 @@ import {
 	serializeWorkflowJobResult,
 	settlementStatusForExecution,
 } from '../agent-background-job.service';
+import { AgentWakeService } from '../agent-wake.service';
 
 function makeWorkflowJob(overrides: Partial<AgentBackgroundJob> = {}): AgentBackgroundJob {
 	return makeJob({
@@ -40,6 +42,8 @@ function makeJob(overrides: Partial<AgentBackgroundJob> = {}): AgentBackgroundJo
 		status: 'running',
 		parentAgentId: 'agent-1',
 		parentThreadId: 'thread-1',
+		parentResourceId: 'draft-chat:user-1',
+		parentPrincipalHash: 'principal-hash',
 		title: 'research',
 		subAgentId: 'sub-1',
 		childThreadId: 'child-thread-1',
@@ -49,18 +53,22 @@ function makeJob(overrides: Partial<AgentBackgroundJob> = {}): AgentBackgroundJo
 		result: null,
 		error: null,
 		settledAt: null,
+		notifiedAt: null,
 		createdAt: new Date(),
 		updatedAt: new Date(),
 		...overrides,
 	} as AgentBackgroundJob;
 }
 
-function setup() {
+function setup(options: { backgroundTasksEnabled?: boolean } = {}) {
 	const jobRepository = mock<AgentBackgroundJobRepository>();
 	const executionRepository = mock<AgentExecutionRepository>();
 	const executionPersistence = mock<ExecutionPersistence>();
 	const publisher = mock<Publisher>();
 	const logger = mock<Logger>();
+	const agentsConfig = mock<AgentsConfig>({
+		backgroundTasksEnabled: options.backgroundTasksEnabled ?? false,
+	});
 	(logger.scoped as Mock).mockReturnValue(logger);
 
 	jobRepository.countRunningByParentThread.mockResolvedValue(0);
@@ -78,6 +86,7 @@ function setup() {
 		executionPersistence,
 		publisher,
 		logger,
+		agentsConfig,
 	);
 	return { service, jobRepository, executionRepository, executionPersistence, publisher };
 }
@@ -86,6 +95,8 @@ const registerParams = {
 	id: 'job-1',
 	parentAgentId: 'agent-1',
 	parentThreadId: 'thread-1',
+	parentResourceId: 'draft-chat:user-1',
+	parentPrincipalHash: 'principal-hash',
 	title: 'research',
 	subAgentId: 'sub-1',
 	childThreadId: 'child-thread-1',
@@ -117,6 +128,19 @@ describe('registerSubAgentJob', () => {
 });
 
 describe('settle', () => {
+	it('requests a parent wake after the row settles', async () => {
+		const { service, jobRepository } = setup({ backgroundTasksEnabled: true });
+		const wakeService = mock<AgentWakeService>();
+		Container.set(AgentWakeService, wakeService);
+		jobRepository.findById.mockResolvedValue(makeJob({ status: 'completed' }));
+
+		await expect(service.settle('job-1', { status: 'completed', result: 'done' })).resolves.toBe(
+			true,
+		);
+
+		expect(wakeService.requestWake).toHaveBeenCalledWith('thread-1');
+	});
+
 	it('drops the abort handle even when the settle write throws', async () => {
 		const { service, jobRepository, executionRepository } = setup();
 		jobRepository.settleIfRunning.mockRejectedValueOnce(new Error('db down'));
@@ -194,6 +218,7 @@ describe('cancel', () => {
 
 		expect(outcome).toBe('cancelled');
 		expect(jobRepository.settleIfRunning).toHaveBeenCalledWith('job-1', { status: 'cancelled' });
+		expect(jobRepository.markMailConsumed).toHaveBeenCalledWith('thread-1', ['job-1']);
 		expect(controller.signal.aborted).toBe(true);
 		expect(publisher.publishCommand).not.toHaveBeenCalled();
 	});
@@ -338,6 +363,8 @@ describe('registerWorkflowJob', () => {
 		id: 'wf-job-1',
 		parentAgentId: 'agent-1',
 		parentThreadId: 'thread-1',
+		parentResourceId: 'draft-chat:user-1',
+		parentPrincipalHash: 'principal-hash',
 		title: 'My Workflow',
 		workflowId: 'workflow-1',
 		executionId: 'exec-1',

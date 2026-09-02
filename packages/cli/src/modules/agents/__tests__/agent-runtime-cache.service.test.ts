@@ -107,6 +107,33 @@ describe('AgentRuntimeCacheService', () => {
 		);
 	});
 
+	it('keeps task runtimes separate and disables their background tools', async () => {
+		const { service, agentRepository, reconstructionService } = makeService();
+		const agent = makeAgent();
+		agentRepository.findByIdAndProjectId.mockResolvedValue(agent);
+		reconstructionService.reconstructFromAgentEntity
+			.mockResolvedValueOnce(makeRuntime())
+			.mockResolvedValueOnce(makeRuntime());
+
+		await service.getRuntime({ agentId, projectId });
+		await service.getRuntime({ agentId, projectId, allowBackgroundTasks: false });
+
+		expect(reconstructionService.reconstructFromAgentEntity).toHaveBeenCalledTimes(2);
+		expect(reconstructionService.reconstructFromAgentEntity).toHaveBeenNthCalledWith(
+			2,
+			agent,
+			expect.anything(),
+			'test',
+			undefined,
+			undefined,
+			undefined,
+			'manual',
+			undefined,
+			undefined,
+			false,
+		);
+	});
+
 	it('defers closing an expired runtime until its active lease is released', async () => {
 		vi.useFakeTimers();
 		try {

@@ -556,6 +556,7 @@ describe('AgentExecutionOrchestratorService', () => {
 			integrationType: 'task',
 			usePublishedVersion: true,
 			sandboxPrincipalHash: taskPrincipalHash,
+			allowBackgroundTasks: false,
 		});
 		expect(externalHooks.run).toHaveBeenCalledWith('agent.preExecute', [agentId]);
 		expect(externalHooks.run).toHaveBeenCalledTimes(1);
@@ -620,8 +621,82 @@ describe('AgentExecutionOrchestratorService', () => {
 		expect(runtimeCacheService.getRuntime).toHaveBeenCalledWith(
 			expect.objectContaining({
 				sandboxPrincipalHash: userPrincipalHash,
+				allowBackgroundTasks: false,
 			}),
 		);
+	});
+
+	it('runs a draft wake headlessly and hides its synthetic input from execution history', async () => {
+		const { service, runtimeCacheService, executionService } = makeService();
+		const runtime = makeRuntime([
+			{ type: 'text-start', id: 'text-1' },
+			{ type: 'text-delta', id: 'text-1', delta: 'Handled the background result.' },
+			{ type: 'finish', finishReason: 'stop' },
+		]);
+		runtimeCacheService.getRuntime.mockResolvedValue(runtime);
+		const abortSignal = new AbortController().signal;
+
+		await service.executeForWake({
+			agentId,
+			projectId,
+			message: '<background-jobs-settled>[]</background-jobs-settled>',
+			memory: { threadId: 'thread-1', resourceId: 'draft-chat:user-1' },
+			identity: { type: 'draft', user, principalHash: userPrincipalHash },
+			abortSignal,
+		});
+
+		expect(runtimeCacheService.getRuntime).toHaveBeenCalledWith({
+			agentId,
+			projectId,
+			integrationType: N8N_CHAT_INTEGRATION_TYPE,
+			usePublishedVersion: false,
+			user,
+			sandboxPrincipalHash: userPrincipalHash,
+		});
+		expect(runtime.agent.stream).toHaveBeenCalledWith(
+			'<background-jobs-settled>[]</background-jobs-settled>',
+			expect.objectContaining({ abortSignal }),
+		);
+		expect(executionService.startExecutionRecording).toHaveBeenCalledWith(
+			expect.objectContaining({ userMessage: null }),
+			expect.any(Date),
+		);
+		expect(executionService.finalizeExecution).toHaveBeenCalledWith(
+			'execution-1',
+			expect.objectContaining({
+				userMessage: null,
+				record: expect.objectContaining({
+					assistantResponse: 'Handled the background result.',
+				}),
+			}),
+		);
+	});
+
+	it('uses the published runtime for an integration wake', async () => {
+		const { service, runtimeCacheService } = makeService();
+		const runtime = makeRuntime();
+		runtimeCacheService.getRuntime.mockResolvedValue(runtime);
+
+		await service.executeForWake({
+			agentId,
+			projectId,
+			message: '<background-jobs-settled>[]</background-jobs-settled>',
+			memory: { threadId: 'thread-1', resourceId: 'integration:slack:user-1' },
+			identity: {
+				type: 'published',
+				integrationType: 'slack',
+				principalHash: integrationPrincipalHash,
+			},
+			abortSignal: new AbortController().signal,
+		});
+
+		expect(runtimeCacheService.getRuntime).toHaveBeenCalledWith({
+			agentId,
+			projectId,
+			integrationType: 'slack',
+			usePublishedVersion: true,
+			sandboxPrincipalHash: integrationPrincipalHash,
+		});
 	});
 
 	it('adds the max-iterations assistant text before the finish chunk and persists it', async () => {

@@ -1,4 +1,5 @@
 import { Logger } from '@n8n/backend-common';
+import { AgentsConfig } from '@n8n/config';
 import { Time } from '@n8n/constants';
 import { OnPubSubEvent } from '@n8n/decorators';
 import { Container, Service } from '@n8n/di';
@@ -123,6 +124,7 @@ export class AgentBackgroundJobService {
 		private readonly executionPersistence: ExecutionPersistence,
 		private readonly publisher: Publisher,
 		private readonly logger: Logger,
+		private readonly agentsConfig: AgentsConfig,
 	) {
 		this.logger = this.logger.scoped('agents');
 	}
@@ -177,12 +179,22 @@ export class AgentBackgroundJobService {
 
 	async settle(jobId: string, settlement: AgentBackgroundJobSettlement): Promise<boolean> {
 		try {
-			return await this.jobRepository.settleIfRunning(jobId, settlement);
+			const settled = await this.jobRepository.settleIfRunning(jobId, settlement);
+			if (settled) await this.requestWakeSafely(jobId);
+			return settled;
 		} finally {
 			// Drop the handle even when the write throws — a leaked entry would
 			// shield the still-running row from orphan reconciliation forever.
 			this.abortControllers.delete(jobId);
 		}
+	}
+
+	async markMailConsumed(parentThreadId: string, jobIds: string[]): Promise<number> {
+		return await this.jobRepository.markMailConsumed(parentThreadId, jobIds);
+	}
+
+	async findUnconsumedSettled(parentThreadId: string): Promise<AgentBackgroundJob[]> {
+		return await this.jobRepository.findUnconsumedSettled(parentThreadId);
 	}
 
 	registerAbortController(jobId: string, controller: AbortController): void {
@@ -230,6 +242,7 @@ export class AgentBackgroundJobService {
 
 		const claimed = await this.jobRepository.settleIfRunning(jobId, { status: 'cancelled' });
 		if (!claimed) return 'already-settled';
+		await this.jobRepository.markMailConsumed(parentThreadId, [jobId]);
 
 		if (job.kind === 'workflow') {
 			await this.stopWorkflowExecution(job);
@@ -255,6 +268,22 @@ export class AgentBackgroundJobService {
 			}
 		}
 		return 'cancelled';
+	}
+
+	private async requestWakeSafely(jobId: string): Promise<void> {
+		if (!this.agentsConfig.backgroundTasksEnabled) return;
+
+		try {
+			const job = await this.jobRepository.findById(jobId);
+			if (!job) return;
+			const { AgentWakeService } = await import('./agent-wake.service.js');
+			await Container.get(AgentWakeService).requestWake(job.parentThreadId);
+		} catch (error) {
+			this.logger.warn('Failed to request a parent wake for a settled background job', {
+				jobId,
+				error,
+			});
+		}
 	}
 
 	@OnPubSubEvent('cancel-agent-background-job', { instanceType: 'main' })
