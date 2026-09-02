@@ -18,6 +18,10 @@ import { ExecutionPersistence } from '@/executions/execution-persistence';
 import { WebhookResponseRelay } from '@/scaling/webhook-response-relay';
 import type { WorkflowRunner } from '@/workflow-runner';
 
+import {
+	encodeAgentSandboxHostMetadata,
+	hashAgentSandboxPrincipal,
+} from '../../agent-sandbox-principal';
 import { AgentBackgroundJobService } from '../../background/agent-background-job.service';
 import {
 	executeWorkflow,
@@ -27,6 +31,8 @@ import {
 import type { WorkflowToolWorkflowLoader } from '../workflow-tool-workflow-loader.service';
 
 vi.mock('@n8n/utils/sleep', () => ({ sleep: vi.fn().mockResolvedValue(undefined) }));
+
+const parentPrincipalHash = hashAgentSandboxPrincipal({ type: 'n8n-user', userId: 'user-1' });
 
 const triggerNode: INode = {
 	id: 'trigger-1',
@@ -860,7 +866,14 @@ describe('workflow tool → background job handoff', () => {
 				suspend,
 				runId: 'run-1',
 				toolCallId: 'call-1',
-				persistence: { threadId: 'thread-1', resourceId: 'resource-1' },
+				persistence: {
+					threadId: 'thread-1',
+					resourceId: 'resource-1',
+					hostMetadata: encodeAgentSandboxHostMetadata({
+						projectId: 'p1',
+						principalHash: parentPrincipalHash,
+					}),
+				},
 			} as never,
 			suspend,
 		};
@@ -889,6 +902,8 @@ describe('workflow tool → background job handoff', () => {
 			id: expect.any(String),
 			parentAgentId: 'agent-1',
 			parentThreadId: 'thread-1',
+			parentResourceId: 'resource-1',
+			parentPrincipalHash,
 			title: 'Approval workflow',
 			workflowId: 'wf-1',
 			executionId: 'exec-1',
